@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>znajdźka</title>
+    <style>
+        body {
+            background-color: black;
+            color: white;
+            text-align: center;
+            font-family: monospace;
+        }
+        canvas {
+            background: darkblue;
+            border: 2px solid white;
+            display: block;
+            margin: auto;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .game-container {
+            position: relative;
+            width: 400px;
+            height: 265px;
+            margin: auto;
+        }
+        .player, .fish {
+            position: absolute;
+            width: 40px; /* Adjust the width to fit within the canvas */
+            height: auto; /* Maintain aspect ratio */
+        }
+    </style>
+</head>
+<body>
+    <h2>Drogi kliencie, połów sobie rybki!</h2>
+    <p><b>Grutuluję! </b>Znalazłeś ukryty pokój! <br>Wyłow specjalną <b>diamentową rybę</b> aby zdobyć zniżkę na zakupy!</p>
+    <p>Użyj <b>← →</b> do poruszania się i <b>spacji</b> do zarzucenia wędki!</p>
+    <p>Punkty: <span id="score">0</span></p>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="400" height="265"></canvas>
+        <img id="player" class="player" src="images_game/fisher.png" alt="Player">
+        <img id="fish" class="fish" src="" alt="Fish">
+    </div>
+    <script>
+        let canvas = document.getElementById("gameCanvas");
+        let ctx = canvas.getContext("2d");
+        let scoreDisplay = document.getElementById("score");
+
+        let score = 0;
+        let player = document.getElementById("player");
+        let fish = document.getElementById("fish");
+        let hook = { x: 0, y: 0, width: 5, height: 10, active: false, descending: false };
+        let keys = {};
+        let rodLength = 0; // Długość wędki
+        let maxRodLength = 220; // Maksymalna długość zarzucenia
+        let diamondFishCaught = false;
+
+        let fishImages = ['images_game/fish1.png', 'images_game/fish2.png'];
+        let diamondFishImage = 'images_game/diamond_fish.png';
+
+        function getRandomFishImage() {
+            return fishImages[Math.floor(Math.random() * fishImages.length)];
+        }
+
+        function resetFish() {
+            fish.src = Math.random() < 0.05 ? diamondFishImage : getRandomFishImage();
+            fish.style.left = Math.random() * 360 + 'px';
+            fish.style.top = getRandomHeight() + 'px';
+            fish.dataset.speedX = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 2 + 2);
+            fish.dataset.points = calculateFishPoints(parseFloat(fish.style.top), Math.abs(fish.dataset.speedX));
+            fish.dataset.isDiamond = fish.src.includes(diamondFishImage);
+        }
+
+        document.addEventListener("keydown", (e) => {
+            keys[e.key] = true;
+            if (e.key === " " && !hook.active) {  // Spacja aktywuje haczyk (zarzucanie)
+                hook.x = player.offsetLeft + player.width / 2 - hook.width / 2;
+                hook.y = player.offsetTop + 10;
+                hook.active = true;
+                hook.descending = true;
+                rodLength = 0;
+            }
+        });
+
+        document.addEventListener("keyup", (e) => keys[e.key] = false);
+
+        function update() {
+            // Sterowanie graczem
+            if (keys["ArrowLeft"] && player.offsetLeft > 0) player.style.left = player.offsetLeft - 5 + 'px';
+            if (keys["ArrowRight"] && player.offsetLeft < canvas.width - player.width) player.style.left = player.offsetLeft + 5 + 'px';
+
+            // Ryba porusza się poziomo
+            fish.style.left = parseFloat(fish.style.left) + parseFloat(fish.dataset.speedX) + 'px';
+            if (parseFloat(fish.style.left) <= 0 || parseFloat(fish.style.left) >= canvas.width - fish.width) {
+                fish.dataset.speedX *= -1; 
+            }
+
+            // Zarzucanie wędki - haczyk schodzi w dół
+            if (hook.active && hook.descending) {
+                hook.y += 4;
+                rodLength += 4;
+                if (rodLength >= maxRodLength) {
+                    hook.descending = false; // Maksymalna długość, wędka wraca
+                }
+
+                // Można złapać rybę tylko w trakcie OPADANIA
+                if (
+                    hook.x < parseFloat(fish.style.left) + fish.width &&
+                    hook.x + hook.width > parseFloat(fish.style.left) &&
+                    hook.y < parseFloat(fish.style.top) + fish.height &&
+                    hook.y + hook.height > parseFloat(fish.style.top)
+                ) {
+                    console.log("Fish caught. Is diamond: " + fish.dataset.isDiamond);
+                    if (fish.dataset.isDiamond === 'true') {
+                        alert("Złapałeś diamentową rybę! Otrzymujesz 10% rabatu na zakupy.");
+                        diamondFishCaught = true;
+                        window.parent.postMessage("diamondFishCaught", "*");
+                    }
+                    score += parseFloat(fish.dataset.points);
+                    scoreDisplay.textContent = Math.floor(score);
+                    resetFish();
+                    hook.active = false;
+                }
+            }
+
+            // Wędka wraca do góry
+            if (hook.active && !hook.descending) {
+                hook.y -= 4;
+                if (hook.y <= player.offsetTop + 10) {
+                    hook.active = false;
+
+                    // Jeśli haczyk wrócił bez złapania ryby, resetujemy punkty
+                    score = 0;
+                    scoreDisplay.textContent = Math.floor(score);
+                }
+            }
+
+            // Sprawdzenie, czy gracz osiągnął 100 punktów
+            if (score >= 100 && !diamondFishCaught) {
+                fish.src = diamondFishImage;
+                fish.dataset.isDiamond = 'true';
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Rysowanie wędki (jeśli haczyk jest aktywny)
+            if (hook.active) {
+                ctx.strokeStyle = "white";
+                ctx.beginPath();
+                ctx.moveTo(player.offsetLeft + player.width / 2, player.offsetTop + 10);
+                ctx.lineTo(hook.x + hook.width / 2, hook.y);
+                ctx.stroke();
+
+                // Rysowanie haczyka
+                ctx.fillStyle = "white";
+                ctx.fillRect(hook.x, hook.y, hook.width, hook.height);
+            }
+        }
+
+        function calculateFishPoints(y, speed) {
+            let heightPoints = 1; // Domyślna wartość
+
+            if (y >= 220) heightPoints = 3; // Ryba bardzo nisko = 3 pkt
+            else if (y >= 180) heightPoints = 2; // Ryba na średniej wysokości = 2 pkt
+
+            let speedPoints = speed; // Szybsza ryba = więcej punktów
+
+            return heightPoints + speedPoints; // Suma punktów za oba czynniki
+        }
+
+        function getRandomHeight() {
+            return Math.random() * 130 + 80; // Ryba pojawia się na różnych wysokościach (80-210px)
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        resetFish();
+        gameLoop();
+    </script>
+</body>
+</html>
